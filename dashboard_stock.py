@@ -1081,14 +1081,22 @@ if seccion == SECCIONES[0]:
         vta_tot = data.get("vta_totals")
         if vta is not None and len(vta):
             df_cst = vta.rename(columns={"Marca": "Entidad", "VentaAcum": "Real"}).copy()
+            # Calcular % vs Meta si no existe o está vacío
+            if "PctMeta" not in df_cst.columns or df_cst["PctMeta"].isna().all():
+                df_cst["PctMeta"] = df_cst["Real"] / df_cst["Meta"].replace(0, np.nan)
             tot_cst = None
             if vta_tot is not None and len(vta_tot):
                 tot_s = vta_tot[vta_tot["Marca"] == "TOTAL EMPRESA"]
                 if len(tot_s) == 0:
                     tot_s = vta_tot.tail(1)
-                tot_cst = tot_s.iloc[0].rename({"Marca": "Entidad", "VentaAcum": "Real"})
+                tot_cst = tot_s.iloc[0].rename({"Marca": "Entidad", "VentaAcum": "Real"}).copy()
+                if pd.isna(tot_cst.get("PctMeta", np.nan)):
+                    try:
+                        tot_cst["PctMeta"] = float(tot_cst["Real"]) / float(tot_cst["Meta"])
+                    except Exception:
+                        pass
             _render_cv_table(df_cst, tot_cst, dim_col="Marca",
-                             lbl_meta="Meta Mes", lbl_real="Venta Acum.")
+                             lbl_meta="Meta Mes", lbl_real="Venta Acum.", show_pct_meta=True)
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(_LEGEND_HTML, unsafe_allow_html=True)
         else:
