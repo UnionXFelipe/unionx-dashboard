@@ -253,6 +253,16 @@ def auto_col_config(df):
         except Exception:
             pass  # Si algo falla, dejar la columna como estaba
 
+    # Reemplazar None / NaN / "None" / "nan" por "—" en todas las columnas
+    for col in df_out.columns:
+        df_out[col] = df_out[col].apply(
+            lambda v: "—" if (
+                v is None
+                or (isinstance(v, float) and np.isnan(v))
+                or str(v).strip().lower() in ("none", "nan", "nat", "")
+            ) else v
+        )
+
     return df_out
 
 
