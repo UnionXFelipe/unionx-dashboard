@@ -889,10 +889,10 @@ k1.metric("🔴 SKUs Críticos",        f"{n_crit}",
 k2.metric("🟣 Capital Inmovilizado", fmt_mm(cap_inmovil),
           delta=f"{cap_skus} SKUs",       delta_color="off",
           help="Exceso sobre cobertura óptima de 4 meses")
-k3.metric("📈 Venta Mayo Acum.",     fmt_mm(venta_mayo),
+k3.metric(f"📈 Venta Neta {_period_label}", fmt_mm(venta_mayo),
           delta=f"{pct_mayo*100:.1f}% vs lineal",
           delta_color="normal" if pct_mayo >= 1 else "inverse",
-          help=f"Meta: {fmt_mm(meta_mayo)}")
+          help=f"Venta neta total empresa acum. | Meta: {fmt_mm(meta_mayo)}")
 k4.metric("🚢 Embarques en Tránsito", f"{n_emb}",
           delta=f"USD ${usd_val:,.0f}", delta_color="off",
           help="Embarques activos con ETA vigente")
