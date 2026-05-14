@@ -869,7 +869,7 @@ cap_skus       = int(_find_val(cap_tot, ["SKUs"]))
 
 # Ventas neta total empresa — leer desde metas (venta neta), no del analisis (costo)
 _metas_kpi = load_metas(_drive_bytes(_METAS_FILE_ID) if _METAS_FILE_ID else None)
-_vn_tot    = _metas_kpi["vn_marca_tot"] if _metas_kpi else None
+_vn_tot    = _metas_kpi["vn_canal_tot"] if _metas_kpi else None
 if _vn_tot is not None:
     try:
         pct_mayo   = float(_vn_tot["PctLineal"])
