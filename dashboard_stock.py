@@ -1242,7 +1242,7 @@ elif seccion == SECCIONES[1]:
                     cob_m_str = f"{cob_m:.2f}m" if not np.isnan(cob_m) else "—"
                     ss_badge  = f" · 🔴 {ss_m} sin stock" if ss_m > 0 else ""
                     label     = f"**{marca_exp}** — {n_m} SKUs · Cob. {cob_m_str}{ss_badge}"
-                    with st.expander(label, expanded=(ss_m > 0)):
+                    with st.expander(label, expanded=False):
                         _dfm = df_m[show_cols].reset_index(drop=True)
                         st.dataframe(auto_col_config(_dfm), hide_index=True, use_container_width=True, height=min(35*n_m+38, 520))
         else:
