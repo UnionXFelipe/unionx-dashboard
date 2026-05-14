@@ -1019,9 +1019,13 @@ def main(skip_analisis=False):
         update_raw_tab(wb.sheets[EXCEL_TAB_RAW], raw_rows)
 
         # ── Expandir pivots de Raw + refrescar todo ───────────────────────────
-        log("Expandiendo rangos de tablas dinámicas y refrescando...")
+        # NOTA: expand_and_refresh_pivots() refresca TODAS las TDs del libro,
+        # incluyendo 'TD VENTAS Net + Contrib' que es la fuente de datos reales
+        # para crear_seguimiento.py. Los valores cacheados quedan actualizados
+        # antes de wb.save(), por lo que pd.read_excel los lee correctamente.
+        log("Expandiendo rangos de tablas dinámicas y refrescando (incluye TD VENTAS Net + Contrib)...")
         n = expand_and_refresh_pivots(wb, EXCEL_TAB_RAW, len(raw_rows), raw_col_count)
-        log(f"   {n} tabla(s) dinámica(s) de Raw expandidas.", 1)
+        log(f"   {n} tabla(s) dinámica(s) de Raw expandidas / todas refrescadas.", 1)
 
         # ── Actualizar VTA X marca meta DESPUÉS del refresh de pivots ─────────
         # IMPORTANTE: debe ir después de expand_and_refresh_pivots() para leer
