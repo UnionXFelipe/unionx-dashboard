@@ -1250,175 +1250,174 @@ elif seccion == SECCIONES[1]:
         st.info("No se encontraron datos de stock crítico.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 3 — CAPITAL INMOVILIZADO  (jerarquía + SKUs con llegadas encima)
+# SECCIÓN 3 — CAPITAL INMOVILIZADO
 # ══════════════════════════════════════════════════════════════════════════════
 elif seccion == SECCIONES[2]:
     cap_full      = data.get("capital_full")
     cap_total_row = data.get("capital_total")
+    sob_det       = data.get("sobrestock")
 
-    if cap_full is not None and len(cap_full):
-        cap_cols  = cap_full.columns.tolist()
-        inmovil_c = next((c for c in cap_cols if "Inmovil" in c or ("Capital" in c and "Llegadas" not in c and "Nivel" not in c)), None)
-        stock_c   = next((c for c in cap_cols if "Stock CST" in c), None)
-        optimo_c  = next((c for c in cap_cols if "Óptimo" in c or "Optimo" in c), None)
-        cob_c2    = next((c for c in cap_cols if "Cobert" in c), None)
-        skus_c2   = next((c for c in cap_cols if c.strip() == "SKUs"), None)
-        meses_c   = next((c for c in cap_cols if "Meses" in c and "Exceso" in c), None)
-
-        # ── KPIs totales ──────────────────────────────────────────────────────
-        if cap_total_row is not None:
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Stock Total CST",       fmt_mm(_find_val(cap_total_row, ["Stock CST"])))
-            m2.metric("Stock Óptimo (4m)",     fmt_mm(_find_val(cap_total_row, ["Óptimo","Optimo"])))
-            m3.metric("Capital Inmovilizado",  fmt_mm(_find_val(cap_total_row, ["Inmovil","Capital"])))
-            m4.metric("SKUs en Sobrestock",    str(int(_find_val(cap_total_row, ["SKUs"]))) if _find_val(cap_total_row, ["SKUs"]) else "—")
+    # ── KPIs totales (siempre visibles, sobre los tabs) ───────────────────────
+    if cap_total_row is not None:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Stock Total CST",       fmt_mm(_find_val(cap_total_row, ["Stock CST"])))
+        m2.metric("Stock Óptimo (4m)",     fmt_mm(_find_val(cap_total_row, ["Óptimo","Optimo"])))
+        m3.metric("Capital Inmovilizado",  fmt_mm(_find_val(cap_total_row, ["Inmovil","Capital"])))
+        m4.metric("SKUs en Sobrestock",    str(int(_find_val(cap_total_row, ["SKUs"]))) if _find_val(cap_total_row, ["SKUs"]) else "—")
         st.divider()
 
-        # ── Jerarquía desplegable (un expander por Marca, tabla HTML dentro) ────
-        # Columnas de datos a mostrar (excluir metadatos de jerarquía)
-        data_cols = [c for c in cap_cols if c not in ("Nivel", "Entidad", "Nombre")]
+    # Contar SKUs con llegadas para el label del tab
+    n_sob_ll = len(sob_det) if sob_det is not None else 0
+    lleg_badge = f" ({n_sob_ll})" if n_sob_ll else ""
 
-        # Colores y sangría por nivel
-        NIVEL_STYLE = {
-            "CatPadre": {"bg": "#E8D5F5", "fg": "#4A235A", "pl": "14px",  "fw": "700", "fs": "12px"},
-            "CatHijo":  {"bg": "#F4ECF7", "fg": "#6C3483", "pl": "28px",  "fw": "600", "fs": "12px"},
-            "SKU":      {"bg": "#FFFFFF", "fg": "#222222", "pl": "44px",  "fw": "400", "fs": "11px"},
-        }
-        ALT_SKU = "#FAFAFA"
+    tab_cap, tab_lleg = st.tabs([
+        "💜  Capital Inmovilizado",
+        f"🚨  Con Llegadas Encima{lleg_badge}",
+    ])
 
-        df = cap_full.reset_index(drop=True)
+    # ── Tab 1: Jerarquía Capital Inmovilizado ────────────────────────────────
+    with tab_cap:
+        if cap_full is not None and len(cap_full):
+            cap_cols  = cap_full.columns.tolist()
+            inmovil_c = next((c for c in cap_cols if "Inmovil" in c or ("Capital" in c and "Llegadas" not in c and "Nivel" not in c)), None)
+            stock_c   = next((c for c in cap_cols if "Stock CST" in c), None)
+            optimo_c  = next((c for c in cap_cols if "Óptimo" in c or "Optimo" in c), None)
+            cob_c2    = next((c for c in cap_cols if "Cobert" in c), None)
+            skus_c2   = next((c for c in cap_cols if c.strip() == "SKUs"), None)
+            meses_c   = next((c for c in cap_cols if "Meses" in c and "Exceso" in c), None)
 
-        # Identificar bloques por Marca
-        all_m_pos = df[df["Nivel"] == "Marca"].index.tolist()
+            # Columnas de datos (excluir metadatos de jerarquía)
+            data_cols = [c for c in cap_cols if c not in ("Nivel", "Entidad", "Nombre")]
 
-        # Ordenar marcas por capital inmovilizado desc
-        if inmovil_c:
-            m_vals = {mi: pd.to_numeric(df.loc[mi, inmovil_c], errors="coerce") for mi in all_m_pos}
-            marca_order = sorted(all_m_pos, key=lambda x: m_vals.get(x, 0) or 0, reverse=True)
-        else:
-            marca_order = all_m_pos
+            NIVEL_STYLE = {
+                "CatPadre": {"bg": "#E8D5F5", "fg": "#4A235A", "pl": "14px",  "fw": "700", "fs": "12px"},
+                "CatHijo":  {"bg": "#F4ECF7", "fg": "#6C3483", "pl": "28px",  "fw": "600", "fs": "12px"},
+                "SKU":      {"bg": "#FFFFFF", "fg": "#222222", "pl": "44px",  "fw": "400", "fs": "11px"},
+            }
+            ALT_SKU = "#FAFAFA"
 
-        for mi in marca_order:
-            nxt = [p for p in all_m_pos if p > mi]
-            m_end   = nxt[0] if nxt else len(df)
-            m_row   = df.loc[mi]
-            m_block = df.iloc[mi + 1 : m_end]   # iloc: exclusivo al final → rows mi+1..m_end-1
+            df = cap_full.reset_index(drop=True)
+            all_m_pos = df[df["Nivel"] == "Marca"].index.tolist()
 
-            inmovil_v = fmt_mm(m_row.get(inmovil_c, 0)) if inmovil_c else "—"
-            skus_v    = int(float(m_row.get(skus_c2, 0))) if skus_c2 and not pd.isna(m_row.get(skus_c2, np.nan)) else "—"
-            cob_v     = f"{float(m_row.get(cob_c2, 0)):.1f}m" if cob_c2 and not pd.isna(m_row.get(cob_c2, np.nan)) else "—"
-            meses_v   = f"{float(m_row.get(meses_c, 0)):.1f}m exceso" if meses_c and not pd.isna(m_row.get(meses_c, np.nan)) else ""
+            if inmovil_c:
+                m_vals = {mi: pd.to_numeric(df.loc[mi, inmovil_c], errors="coerce") for mi in all_m_pos}
+                marca_order = sorted(all_m_pos, key=lambda x: m_vals.get(x, 0) or 0, reverse=True)
+            else:
+                marca_order = all_m_pos
 
-            m_label = f"{m_row['Nombre']}   ·   {skus_v} SKUs   ·   Cob {cob_v}   ·   {meses_v}   ·   💜 {inmovil_v}"
+            for mi in marca_order:
+                nxt     = [p for p in all_m_pos if p > mi]
+                m_end   = nxt[0] if nxt else len(df)
+                m_row   = df.loc[mi]
+                m_block = df.iloc[mi + 1 : m_end]
 
-            with st.expander(m_label, expanded=False):
-                if len(m_block) == 0:
-                    st.caption("Sin detalle disponible.")
-                    continue
+                inmovil_v = fmt_mm(m_row.get(inmovil_c, 0)) if inmovil_c else "—"
+                skus_v    = int(float(m_row.get(skus_c2, 0))) if skus_c2 and not pd.isna(m_row.get(skus_c2, np.nan)) else "—"
+                cob_v     = f"{float(m_row.get(cob_c2, 0)):.1f}m" if cob_c2 and not pd.isna(m_row.get(cob_c2, np.nan)) else "—"
+                meses_v   = f"{float(m_row.get(meses_c, 0)):.1f}m exceso" if meses_c and not pd.isna(m_row.get(meses_c, np.nan)) else ""
 
-                # Construir tabla HTML con jerarquía visual
-                # Cabecera
-                th_style = f"background:{C_SOB_BG};color:white;padding:6px 8px;white-space:nowrap;font-size:11px;text-align:right"
-                th_left  = f"background:{C_SOB_BG};color:white;padding:6px 8px;white-space:nowrap;font-size:11px;text-align:left"
-                thead = (
-                    "<thead><tr>"
-                    + f'<th style="{th_left}">Categoría / SKU</th>'
-                    + "".join(f'<th style="{th_style}">{c}</th>' for c in data_cols)
-                    + "</tr></thead>"
-                )
+                m_label = f"{m_row['Nombre']}   ·   {skus_v} SKUs   ·   Cob {cob_v}   ·   {meses_v}   ·   💜 {inmovil_v}"
 
-                tbody = ""
-                sku_alt = False
-                for _, row in m_block.iterrows():
-                    nivel = row["Nivel"]
-                    if nivel not in NIVEL_STYLE:
+                with st.expander(m_label, expanded=False):
+                    if len(m_block) == 0:
+                        st.caption("Sin detalle disponible.")
                         continue
-                    s = NIVEL_STYLE[nivel]
-                    bg = s["bg"]
-                    if nivel == "SKU":
-                        bg = ALT_SKU if sku_alt else "#FFFFFF"
-                        sku_alt = not sku_alt
-                    else:
-                        sku_alt = False
 
-                    nombre_cell = (
-                        f'<td style="background:{bg};color:{s["fg"]};padding:5px 8px;'
-                        f'padding-left:{s["pl"]};font-weight:{s["fw"]};font-size:{s["fs"]};'
-                        f'white-space:nowrap">{row["Nombre"]}</td>'
+                    th_style = f"background:{C_SOB_BG};color:white;padding:6px 8px;white-space:nowrap;font-size:11px;text-align:right"
+                    th_left  = f"background:{C_SOB_BG};color:white;padding:6px 8px;white-space:nowrap;font-size:11px;text-align:left"
+                    thead = (
+                        "<thead><tr>"
+                        + f'<th style="{th_left}">Categoría / SKU</th>'
+                        + "".join(f'<th style="{th_style}">{c}</th>' for c in data_cols)
+                        + "</tr></thead>"
                     )
 
-                    def _meses_bg(m):
-                        if m > 8: return ("#E8DAEF", "#6C3483")
-                        if m > 4: return ("#FADBD8", "#CB4335")
-                        return           ("#FDEBD0", "#E67E22")
+                    tbody = ""
+                    sku_alt = False
+                    for _, row in m_block.iterrows():
+                        nivel = row["Nivel"]
+                        if nivel not in NIVEL_STYLE:
+                            continue
+                        s  = NIVEL_STYLE[nivel]
+                        bg = s["bg"]
+                        if nivel == "SKU":
+                            bg = ALT_SKU if sku_alt else "#FFFFFF"
+                            sku_alt = not sku_alt
+                        else:
+                            sku_alt = False
 
-                    def _is_empty(v):
-                        try:
-                            return pd.isna(v) or str(v).strip() in ("", "nan")
-                        except Exception:
-                            return False
+                        nombre_cell = (
+                            f'<td style="background:{bg};color:{s["fg"]};padding:5px 8px;'
+                            f'padding-left:{s["pl"]};font-weight:{s["fw"]};font-size:{s["fs"]};'
+                            f'white-space:nowrap">{row["Nombre"]}</td>'
+                        )
 
-                    def _fmt_cell(val, col):
-                        base_td = (f'background:{bg};color:{s["fg"]};padding:5px 8px;'
-                                   f'font-size:{s["fs"]}')
-                        if _is_empty(val):
-                            return f'<td style="{base_td};text-align:right">—</td>'
-                        # Cobertura: colored badge
-                        if col == cob_c2:
+                        def _meses_bg(m):
+                            if m > 8: return ("#E8DAEF", "#6C3483")
+                            if m > 4: return ("#FADBD8", "#CB4335")
+                            return           ("#FDEBD0", "#E67E22")
+
+                        def _is_empty(v):
                             try:
-                                f = float(val)
-                                cbg = cob_color(f)
-                                return (f'<td style="background:{cbg};color:white;padding:5px 8px;'
-                                        f'text-align:center;font-weight:700;font-size:{s["fs"]}">'
-                                        f'{f:.1f}m</td>')
+                                return pd.isna(v) or str(v).strip() in ("", "nan")
                             except Exception:
-                                return f'<td style="{base_td};text-align:center">—</td>'
-                        # SKUs: integer count
-                        if col == skus_c2:
-                            try:
-                                return (f'<td style="{base_td};text-align:center;font-weight:600">'
-                                        f'{int(float(val))}</td>')
-                            except Exception:
-                                return f'<td style="{base_td};text-align:center">—</td>'
-                        # Meses Exceso: colored Xm
-                        if meses_c and col == meses_c:
-                            try:
-                                f = float(val)
-                                mbg, mfg = _meses_bg(f)
-                                return (f'<td style="background:{mbg};color:{mfg};padding:5px 8px;'
-                                        f'text-align:center;font-weight:700;font-size:{s["fs"]}">'
-                                        f'{f:.1f}m</td>')
-                            except Exception:
-                                return f'<td style="{base_td};text-align:center">—</td>'
-                        # Tiene Llegadas: text centered
-                        if "Llegadas" in str(col):
-                            return (f'<td style="{base_td};text-align:center">{val}</td>')
-                        # Default: currency in $MM
-                        try:
-                            f = float(val)
-                            if np.isnan(f):
+                                return False
+
+                        def _fmt_cell(val, col):
+                            base_td = (f'background:{bg};color:{s["fg"]};padding:5px 8px;'
+                                       f'font-size:{s["fs"]}')
+                            if _is_empty(val):
                                 return f'<td style="{base_td};text-align:right">—</td>'
-                            return (f'<td style="{base_td};text-align:right">{fmt_mm(f)}</td>')
-                        except Exception:
-                            return f'<td style="{base_td};text-align:right">{val}</td>'
+                            if col == cob_c2:
+                                try:
+                                    f = float(val)
+                                    cbg = cob_color(f)
+                                    return (f'<td style="background:{cbg};color:white;padding:5px 8px;'
+                                            f'text-align:center;font-weight:700;font-size:{s["fs"]}">'
+                                            f'{f:.1f}m</td>')
+                                except Exception:
+                                    return f'<td style="{base_td};text-align:center">—</td>'
+                            if col == skus_c2:
+                                try:
+                                    return (f'<td style="{base_td};text-align:center;font-weight:600">'
+                                            f'{int(float(val))}</td>')
+                                except Exception:
+                                    return f'<td style="{base_td};text-align:center">—</td>'
+                            if meses_c and col == meses_c:
+                                try:
+                                    f = float(val)
+                                    mbg, mfg = _meses_bg(f)
+                                    return (f'<td style="background:{mbg};color:{mfg};padding:5px 8px;'
+                                            f'text-align:center;font-weight:700;font-size:{s["fs"]}">'
+                                            f'{f:.1f}m</td>')
+                                except Exception:
+                                    return f'<td style="{base_td};text-align:center">—</td>'
+                            if "Llegadas" in str(col):
+                                return (f'<td style="{base_td};text-align:center">{val}</td>')
+                            try:
+                                f = float(val)
+                                if np.isnan(f):
+                                    return f'<td style="{base_td};text-align:right">—</td>'
+                                return (f'<td style="{base_td};text-align:right">{fmt_mm(f)}</td>')
+                            except Exception:
+                                return f'<td style="{base_td};text-align:right">{val}</td>'
 
-                    data_cells = "".join(_fmt_cell(row.get(c, ""), c) for c in data_cols)
-                    tbody += f"<tr>{nombre_cell}{data_cells}</tr>"
+                        data_cells = "".join(_fmt_cell(row.get(c, ""), c) for c in data_cols)
+                        tbody += f"<tr>{nombre_cell}{data_cells}</tr>"
 
-                html_tbl = (
-                    '<div style="overflow-x:auto">'
-                    '<table style="border-collapse:collapse;width:100%;font-family:Arial">'
-                    + thead + "<tbody>" + tbody + "</tbody></table></div>"
-                )
-                st.markdown(html_tbl, unsafe_allow_html=True)
+                    html_tbl = (
+                        '<div style="overflow-x:auto">'
+                        '<table style="border-collapse:collapse;width:100%;font-family:Arial">'
+                        + thead + "<tbody>" + tbody + "</tbody></table></div>"
+                    )
+                    st.markdown(html_tbl, unsafe_allow_html=True)
+        else:
+            st.info("No se encontraron datos de capital inmovilizado.")
 
-        # ── Subsección: SKUs en sobrestock con llegadas encima ────────────────
-        sob_det = data.get("sobrestock")
+    # ── Tab 2: SKUs en sobrestock con llegadas encima ────────────────────────
+    with tab_lleg:
+        st.caption("Productos con más de 6 meses de cobertura que tienen embarques en camino — requieren revisión comercial.")
         if sob_det is not None and len(sob_det):
-            st.divider()
-            st.markdown("### 🚨 SKUs en Sobrestock con Llegadas Encima")
-            st.caption("Productos con más de 6 meses de cobertura que tienen embarques en camino — requieren revisión.")
-
             sd_cols  = sob_det.columns.tolist()
             marca_sc = sd_cols[0]
             cat_sc   = next((c for c in sd_cols if "Cat" in c and "Com" in c), sd_cols[1] if len(sd_cols) > 1 else None)
@@ -1445,20 +1444,19 @@ elif seccion == SECCIONES[2]:
 
             st.caption(f"**{len(df_sob)} SKUs**" + (f" — filtrado de {len(sob_det)}" if len(df_sob) != len(sob_det) else ""))
 
-            # Agrupar por marca en expanders
             if stock_sc:
                 orden_marcas = df_sob.groupby(marca_sc)[stock_sc].sum().sort_values(ascending=False).index.tolist()
             else:
                 orden_marcas = sorted(df_sob[marca_sc].dropna().unique().tolist())
 
             for marca in orden_marcas:
-                df_m    = df_sob[df_sob[marca_sc] == marca]
-                n_m     = len(df_m)
-                stock_v = fmt_mm(df_m[stock_sc].sum()) if stock_sc else "—"
-                cob_avg = f"{df_m[cob_sc].mean():.1f}m prom" if cob_sc and n_m else "—"
+                df_m     = df_sob[df_sob[marca_sc] == marca]
+                n_m      = len(df_m)
+                stock_v  = fmt_mm(df_m[stock_sc].sum()) if stock_sc else "—"
+                cob_avg  = f"{df_m[cob_sc].mean():.1f}m prom" if cob_sc and n_m else "—"
                 lleg_tot = f"{int(df_m[lleg_sc].sum())} un." if lleg_sc else ""
-                n_cats  = df_m[cat_sc].nunique() if cat_sc else 0
-                cat_lbl = f"   ·   {n_cats} cats" if n_cats > 1 else ""
+                n_cats   = df_m[cat_sc].nunique() if cat_sc else 0
+                cat_lbl  = f"   ·   {n_cats} cats" if n_cats > 1 else ""
                 lleg_lbl = f"   ·   🚢 {lleg_tot}" if lleg_tot else ""
 
                 with st.expander(
@@ -1481,8 +1479,8 @@ elif seccion == SECCIONES[2]:
                     _dfsm = df_show.reset_index(drop=True)
                     st.dataframe(auto_col_config(_dfsm), hide_index=True, use_container_width=True,
                                  height=min(35 * n_m + 38, 600))
-    else:
-        st.info("No se encontraron datos de capital inmovilizado.")
+        else:
+            st.info("No hay SKUs en sobrestock con llegadas registradas.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECCIÓN 4 — TRÁNSITOS
