@@ -1053,6 +1053,30 @@ def main(skip_analisis=False):
         wb.save()
         wb.close()
 
+        # ── Seguimiento PPTO (Cómo Vamos + Comp. Marcas/Canales) ────────────
+        log("Generando hojas de seguimiento presupuesto...")
+        try:
+            import subprocess as _sp, sys as _sys, os as _os2
+            _seg_dir  = _os2.path.join(_os2.path.dirname(__file__), "Seguimiento PPTO 2026")
+            _leer     = _os2.path.join(_seg_dir, "leer_todo.py")
+            _crear    = _os2.path.join(_seg_dir, "crear_seguimiento.py")
+            _py       = _sys.executable
+            if _os2.path.exists(_leer) and _os2.path.exists(_crear):
+                r1 = _sp.run([_py, _leer],  capture_output=True, text=True, encoding='cp1252', errors='replace')
+                if r1.returncode == 0:
+                    log("   ✅ leer_todo.py OK")
+                else:
+                    log(f"   ⚠️  leer_todo.py error: {r1.stderr[-300:]}", 1)
+                r2 = _sp.run([_py, _crear], capture_output=True, text=True, encoding='cp1252', errors='replace')
+                if r2.returncode == 0:
+                    log("   ✅ crear_seguimiento.py OK — 5 hojas actualizadas en Metas oficiales")
+                else:
+                    log(f"   ⚠️  crear_seguimiento.py error: {r2.stderr[-300:]}", 1)
+            else:
+                log("   ℹ️  Scripts de seguimiento no encontrados en Seguimiento PPTO 2026/")
+        except Exception as _e:
+            log(f"   ⚠️  No se pudo generar seguimiento: {_e}", 1)
+
         # ── Análisis de planificación (críticos + sobrestock) ─────────────────
         if skip_analisis:
             log("⏭  Análisis de planificación omitido (--no-analisis).")
