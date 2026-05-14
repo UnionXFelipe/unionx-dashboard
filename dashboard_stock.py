@@ -867,9 +867,11 @@ cap_inmovil    = _find_val(cap_tot, ["Inmovil", "Capital"])
 stock_sob_tot  = _find_val(cap_tot, ["Stock CST"])
 cap_skus       = int(_find_val(cap_tot, ["SKUs"]))
 
-# Ventas neta total empresa — leer desde metas (venta neta), no del analisis (costo)
+# Ventas neta + contribución — leer desde metas (vn_canal_tot / cf_canal_tot)
 _metas_kpi = load_metas(_drive_bytes(_METAS_FILE_ID) if _METAS_FILE_ID else None)
-_vn_tot    = _metas_kpi["vn_canal_tot"] if _metas_kpi else None
+_vn_tot    = _metas_kpi["vn_canal_tot"]  if _metas_kpi else None
+_cf_tot    = _metas_kpi["cf_canal_tot"]  if _metas_kpi else None
+
 if _vn_tot is not None:
     try:
         pct_mayo   = float(_vn_tot["PctLineal"])
@@ -878,12 +880,21 @@ if _vn_tot is not None:
     except Exception:
         pct_mayo = venta_mayo = meta_mayo = 0.0
 elif emp_row is not None:
-    # fallback al dato del analisis si no hay metas
     pct_mayo   = float(emp_row["PctLineal"])
     venta_mayo = float(emp_row["VentaAcum"])
     meta_mayo  = float(emp_row["Meta"])
 else:
     pct_mayo = venta_mayo = meta_mayo = 0.0
+
+if _cf_tot is not None:
+    try:
+        pct_cf    = float(_cf_tot["PctLineal"])
+        venta_cf  = float(_cf_tot["Real"])
+        meta_cf   = float(_cf_tot["Meta"])
+    except Exception:
+        pct_cf = venta_cf = meta_cf = 0.0
+else:
+    pct_cf = venta_cf = meta_cf = 0.0
 
 # Tránsitos
 n_emb = len(trans_df) if trans_df is not None else 0
@@ -895,21 +906,25 @@ else:
     usd_val = 0
 n_nuevos = len(nuevos_df) if nuevos_df is not None else 0
 
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("🔴 SKUs Críticos",        f"{n_crit}",
-          delta=f"{n_sin_stock} sin stock", delta_color="inverse",
-          help="Cobertura < 1 mes")
-k2.metric("🟣 Capital Inmovilizado", fmt_mm(cap_inmovil),
-          delta=f"{cap_skus} SKUs",       delta_color="off",
-          help="Exceso sobre cobertura óptima de 4 meses")
-k3.metric(f"📈 Venta Neta {_period_label}", fmt_mm(venta_mayo),
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1.metric(f"📈 Venta Neta {_period_label}", fmt_mm(venta_mayo),
           delta=f"{pct_mayo*100:.1f}% vs lineal",
           delta_color="normal" if pct_mayo >= 1 else "inverse",
           help=f"Venta neta total empresa acum. | Meta: {fmt_mm(meta_mayo)}")
-k4.metric("🚢 Embarques en Tránsito", f"{n_emb}",
+k2.metric(f"📊 Contrib. Front {_period_label}", fmt_mm(venta_cf),
+          delta=f"{pct_cf*100:.1f}% vs lineal",
+          delta_color="normal" if pct_cf >= 1 else "inverse",
+          help=f"Contribución frontal total empresa acum. | Meta: {fmt_mm(meta_cf)}")
+k3.metric("🟣 Capital Inmovilizado", fmt_mm(cap_inmovil),
+          delta=f"{cap_skus} SKUs",       delta_color="off",
+          help="Exceso sobre cobertura óptima de 4 meses")
+k4.metric("🔴 SKUs Críticos",        f"{n_crit}",
+          delta=f"{n_sin_stock} sin stock", delta_color="inverse",
+          help="Cobertura < 1 mes")
+k5.metric("🚢 Embarques en Tránsito", f"{n_emb}",
           delta=f"USD ${usd_val:,.0f}", delta_color="off",
           help="Embarques activos con ETA vigente")
-k5.metric("🆕 Nuevos SKUs en Tránsito", f"{n_nuevos}",
+k6.metric("🆕 Nuevos SKUs en Tránsito", f"{n_nuevos}",
           help="SKUs que ingresan por primera vez")
 
 st.divider()
