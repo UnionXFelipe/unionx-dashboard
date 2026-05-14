@@ -928,7 +928,9 @@ else:
     usd_val = 0
 n_nuevos = len(nuevos_df) if nuevos_df is not None else 0
 
-k1, k2, k3, k4, k5, k6 = st.columns(6)
+_margen_front = (venta_cf / venta_mayo) if venta_mayo > 0 else None
+
+k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 k1.metric(f"📈 Venta Neta {_period_label}", fmt_mm(venta_mayo),
           delta=f"{pct_mayo*100:.1f}% vs lineal",
           delta_color="normal" if pct_mayo >= 1 else "inverse",
@@ -937,16 +939,19 @@ k2.metric(f"📊 Contrib. Front {_period_label}", fmt_mm(venta_cf),
           delta=f"{pct_cf*100:.1f}% vs lineal",
           delta_color="normal" if pct_cf >= 1 else "inverse",
           help=f"Contribución frontal total empresa acum. | Meta: {fmt_mm(meta_cf)}")
-k3.metric("⚠️ Capital Inmovilizado", fmt_mm(cap_inmovil),
+k3.metric(f"📉 Margen Front {_period_label}",
+          f"{_margen_front*100:.2f}%" if _margen_front is not None else "—",
+          help="Contribución Frontal / Venta Neta acumulada")
+k4.metric("⚠️ Capital Inmovilizado", fmt_mm(cap_inmovil),
           delta=f"{cap_skus} SKUs",       delta_color="off",
           help="Exceso sobre cobertura óptima de 4 meses")
-k4.metric("🔴 SKUs Críticos",        f"{n_crit}",
+k5.metric("🔴 SKUs Críticos",        f"{n_crit}",
           delta=f"{n_sin_stock} sin stock", delta_color="inverse",
           help="Cobertura < 1 mes")
-k5.metric("🚢 Embarques en Tránsito", f"{n_emb}",
+k6.metric("🚢 Embarques en Tránsito", f"{n_emb}",
           delta=f"USD ${usd_val:,.0f}", delta_color="off",
           help="Embarques activos con ETA vigente")
-k6.metric("🆕 Nuevos SKUs en Tránsito", f"{n_nuevos}",
+k7.metric("🆕 Nuevos SKUs en Tránsito", f"{n_nuevos}",
           help="SKUs que ingresan por primera vez")
 
 st.divider()
