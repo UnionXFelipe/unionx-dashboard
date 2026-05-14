@@ -17,6 +17,41 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ─── GOOGLE DRIVE (definir antes del sidebar que las usa) ─────────────────────
+def _drive_secrets():
+    """Retorna dict con google_credentials desde st.secrets, o None si no hay."""
+    try:
+        return dict(st.secrets["google_credentials"])
+    except Exception:
+        return None
+
+
+def _drive_service():
+    """Crea cliente Drive API usando secrets (cloud) o credentials.json (local)."""
+    from drive_utils import get_service
+    return get_service(rw=False, secrets=_drive_secrets())
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _drive_list_analisis(folder_id: str) -> list:
+    """Lista archivos analisis_planificacion_*.xlsx en la carpeta Drive."""
+    try:
+        from drive_utils import list_folder
+        svc = _drive_service()
+        files = list_folder(svc, folder_id)
+        return [f for f in files if "analisis_planificacion" in f["name"]]
+    except Exception as e:
+        return []
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _drive_bytes(file_id: str) -> bytes:
+    """Descarga un archivo de Drive y retorna sus bytes. Cached 5 min."""
+    from drive_utils import download_bytes
+    svc = _drive_service()
+    return download_bytes(svc, file_id)
+
+
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -712,41 +747,6 @@ def _db_freshness() -> tuple[bool, str]:
         return False, f"hace {lag/60:.1f}h ❌"
     except Exception:
         return False, ts_str
-
-
-# ─── GOOGLE DRIVE ─────────────────────────────────────────────────────────────
-def _drive_secrets():
-    """Retorna dict con google_credentials desde st.secrets, o None si no hay."""
-    try:
-        return dict(st.secrets["google_credentials"])
-    except Exception:
-        return None
-
-
-def _drive_service():
-    """Crea cliente Drive API usando secrets (cloud) o credentials.json (local)."""
-    from drive_utils import get_service
-    return get_service(rw=False, secrets=_drive_secrets())
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _drive_list_analisis(folder_id: str) -> list:
-    """Lista archivos analisis_planificacion_*.xlsx en la carpeta Drive."""
-    try:
-        from drive_utils import list_folder
-        svc = _drive_service()
-        files = list_folder(svc, folder_id)
-        return [f for f in files if "analisis_planificacion" in f["name"]]
-    except Exception as e:
-        return []
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _drive_bytes(file_id: str) -> bytes:
-    """Descarga un archivo de Drive y retorna sus bytes. Cached 5 min."""
-    from drive_utils import download_bytes
-    svc = _drive_service()
-    return download_bytes(svc, file_id)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
