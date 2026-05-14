@@ -220,6 +220,10 @@ def auto_col_config(df):
             if any(k in c for k in ["Cobert", "(m)", "Meses", "Cob."]):
                 df_out[col] = series.apply(lambda v: _fmt_val(v, lambda f: f"{f:.2f}m"))
 
+            # Unidades — evaluar ANTES que moneda para evitar $ en "Stock Unid", "Venta PPTO Unid"
+            elif any(k in c for k in ["Unid", "Cantidad", "Unidades", "Ranking"]):
+                df_out[col] = series.apply(lambda v: _fmt_val(v, lambda f: f"{int(f):,}"))
+
             # Moneda CLP → "$ X,XXX"
             elif any(k in c for k in ["($)", "CST", "Venta", "Stock", "Capital", "Inmovil", "Óptimo", "Optimo"]):
                 df_out[col] = series.apply(lambda v: _fmt_val(v, lambda f: f"$ {f:,.0f}"))
@@ -232,8 +236,8 @@ def auto_col_config(df):
             elif any(k in c for k in ["%", "Pct", "vs Meta"]):
                 df_out[col] = series.apply(lambda v: _fmt_val(v, lambda f: f"{f*100:.1f}%"))
 
-            # Enteros con separador de miles
-            elif any(k in c for k in ["Unid", "Cantidad", "Unidades", "Ranking", "Llegadas"]):
+            # Enteros con separador de miles (Llegadas sin Unid → puede ser CST o unid genérico)
+            elif any(k in c for k in ["Llegadas"]):
                 df_out[col] = series.apply(lambda v: _fmt_val(v, lambda f: f"{int(f):,}"))
 
             else:
