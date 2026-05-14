@@ -1064,7 +1064,7 @@ def main(skip_analisis=False):
             except Exception as e:
                 log(f"   ADVERTENCIA: no se pudo generar análisis de planificación — {e}", 1)
 
-        # ── Subir análisis a Google Drive ─────────────────────────────────────
+        # ── Subir análisis + metas a Google Drive ────────────────────────────
         try:
             import os as _os
             _config_path = _os.path.join(_os.path.dirname(__file__), "drive_config.py")
@@ -1072,16 +1072,31 @@ def main(skip_analisis=False):
                 import importlib.util as _ilu
                 _spec = _ilu.spec_from_file_location("drive_config", _config_path)
                 _dc = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_dc)
-                _folder_id = getattr(_dc, "DRIVE_FOLDER_ID", "")
+                _folder_id  = getattr(_dc, "DRIVE_FOLDER_ID", "")
+                _metas_fid  = getattr(_dc, "METAS_FILE_ID", "")
                 if _folder_id:
                     from drive_utils import get_service, upload_or_update, find_file
                     from analisis_stock_critico import OUT_PATH
                     _svc = get_service(rw=True)
+
+                    # 1) Analisis planificacion
                     _fname = _os.path.basename(OUT_PATH)
                     _existing = find_file(_svc, _folder_id, _fname)
                     upload_or_update(_svc, OUT_PATH, _fname, _folder_id,
                                      existing_id=_existing)
                     log(f"   ☁️  Análisis subido a Drive: {_fname}")
+
+                    # 2) Metas oficiales (actualiza el archivo existente por ID)
+                    _metas_local = r"C:\Users\felip\Desktop\UNIONX\PPTO 2026\Metas oficiales 1SEM Nuevo.xlsx"
+                    if _metas_fid and _os.path.exists(_metas_local):
+                        upload_or_update(_svc, _metas_local,
+                                         _os.path.basename(_metas_local),
+                                         _folder_id, existing_id=_metas_fid)
+                        log(f"   ☁️  Metas subido a Drive: {_os.path.basename(_metas_local)}")
+                    elif not _metas_fid:
+                        log("   ℹ️  METAS_FILE_ID vacío en drive_config.py — omitiendo upload metas.")
+                    else:
+                        log(f"   ⚠️  Metas no encontrado localmente: {_metas_local}")
                 else:
                     log("   ℹ️  DRIVE_FOLDER_ID vacío en drive_config.py — omitiendo upload.")
             else:
