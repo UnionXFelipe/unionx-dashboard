@@ -275,11 +275,19 @@ SECCIONES = [
 ]
 
 with st.sidebar:
+    # ── Logo UnionX ───────────────────────────────────────────────────────
+    _logo_path = os.path.join(os.path.dirname(__file__), "assets", "unionx_logo.png")
+    if os.path.exists(_logo_path):
+        st.image(_logo_path, use_container_width=True)
+    else:
+        st.markdown(
+            "<span style='font-size:1.1rem;font-weight:800;color:#4A8BDF'>UnionX</span>",
+            unsafe_allow_html=True,
+        )
     st.markdown(
-        "<div style='padding:6px 0 2px'>"
-        "<span style='font-size:1.35rem;font-weight:800;letter-spacing:-.5px'>📊 Análisis de</span><br>"
-        "<span style='font-size:1.35rem;font-weight:800;letter-spacing:-.5px'>Planificación</span>"
-        "<hr style='margin:10px 0 8px;border-color:#444'>"
+        "<div style='padding:2px 0 2px'>"
+        "<span style='font-size:1.1rem;font-weight:700;letter-spacing:-.3px'>📊 Análisis de Planificación</span>"
+        "<hr style='margin:8px 0 8px;border-color:#444'>"
         "</div>",
         unsafe_allow_html=True,
     )
