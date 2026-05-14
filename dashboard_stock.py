@@ -121,16 +121,16 @@ C_SOB_BG   = "#4A235A"
 
 
 def pct_color(v):
-    """Hex color for % vs lineal stored as decimal (0.85 → 85%)."""
+    """Retorna (bg, fg) suaves para % vs lineal (decimal: 0.85 → 85%)."""
     try:
         v = float(v)
     except Exception:
-        return "#999"
-    if v >= 1.10: return C_MORADO
-    if v >= 0.90: return C_VERDE
-    if v >= 0.70: return C_AMARILLO
-    if v >= 0.50: return C_NARANJA
-    return C_ROJO
+        return "#f0f0f0", "#888"
+    if v >= 1.10: return "#EDE7F6", "#5E35B1"   # pastel morado
+    if v >= 0.90: return "#E8F5E9", "#2E7D32"   # pastel verde
+    if v >= 0.70: return "#FFF9C4", "#827717"   # pastel amarillo
+    if v >= 0.50: return "#FFF3E0", "#BF360C"   # pastel naranja
+    return "#FFEBEE", "#B71C1C"                  # pastel rojo
 
 
 def cob_color(v):
@@ -968,7 +968,7 @@ def _render_cv_table(df_data, tot_row, dim_col="Marca",
         pc  = r.get("PctLineal", np.nan)
         try:    pc_f = float(pc)
         except: pc_f = np.nan
-        pcbg = pct_color(pc_f) if not np.isnan(pc_f) else "#999"
+        pcbg, pcfg = pct_color(pc_f) if not np.isnan(pc_f) else ("#f0f0f0", "#888")
         pc_s = fmt_pct(pc_f) if not np.isnan(pc_f) else "—"
 
         vs_color = vs_fg if is_total else vs_fg
@@ -979,7 +979,7 @@ def _render_cv_table(df_data, tot_row, dim_col="Marca",
             f'<td style="background:{bg};color:{fg};padding:{pad};text-align:right;font-size:13px">{ml}</td>'
             f'<td style="background:{bg};color:{fg};padding:{pad};text-align:right;font-weight:700;font-size:13px">{real}</td>'
             f'<td style="background:{bg};color:{vs_color};padding:{pad};text-align:right;font-weight:700;font-size:13px">{vs_s}</td>'
-            f'<td style="background:{pcbg};color:white;padding:{pad};text-align:center;font-weight:800;font-size:14px">{pc_s}</td>'
+            f'<td style="background:{pcbg};color:{pcfg};padding:{pad};text-align:center;font-weight:600;font-size:13px;border-radius:4px">{pc_s}</td>'
         )
         if has_pm:
             pm = r.get("PctMeta", np.nan)
@@ -1021,10 +1021,13 @@ def _render_cv_table(df_data, tot_row, dim_col="Marca",
     st.markdown(html_tbl, unsafe_allow_html=True)
 
 _LEGEND_HTML = " ".join([
-    f'<span class="legend-pill" style="background:{c}">{lbl}</span>'
-    for c, lbl in [
-        (C_MORADO,"≥110%"),(C_VERDE,"90–110%"),
-        (C_AMARILLO,"70–90%"),(C_NARANJA,"50–70%"),(C_ROJO,"<50%"),
+    f'<span class="legend-pill" style="background:{bg};color:{fg}">{lbl}</span>'
+    for (bg, fg), lbl in [
+        (("#EDE7F6","#5E35B1"), "≥110%"),
+        (("#E8F5E9","#2E7D32"), "90–110%"),
+        (("#FFF9C4","#827717"), "70–90%"),
+        (("#FFF3E0","#BF360C"), "50–70%"),
+        (("#FFEBEE","#B71C1C"), "<50%"),
     ]
 ])
 
