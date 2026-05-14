@@ -270,8 +270,7 @@ def auto_col_config(df):
 SECCIONES = [
     "📈  Cómo Vamos",
     "🔴  Stock Crítico",
-    "🟣  Capital Inmovilizado",
-    "⚠️   Sobrestock",
+    "⚠️  Capital Inmovilizado",
     "🚢  Tránsitos",
 ]
 
@@ -929,7 +928,7 @@ k2.metric(f"📊 Contrib. Front {_period_label}", fmt_mm(venta_cf),
           delta=f"{pct_cf*100:.1f}% vs lineal",
           delta_color="normal" if pct_cf >= 1 else "inverse",
           help=f"Contribución frontal total empresa acum. | Meta: {fmt_mm(meta_cf)}")
-k3.metric("🟣 Capital Inmovilizado", fmt_mm(cap_inmovil),
+k3.metric("⚠️ Capital Inmovilizado", fmt_mm(cap_inmovil),
           delta=f"{cap_skus} SKUs",       delta_color="off",
           help="Exceso sobre cobertura óptima de 4 meses")
 k4.metric("🔴 SKUs Críticos",        f"{n_crit}",
@@ -1251,7 +1250,7 @@ elif seccion == SECCIONES[1]:
         st.info("No se encontraron datos de stock crítico.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 3 — CAPITAL INMOVILIZADO  (jerarquía: Marca → CatPadre → detalle)
+# SECCIÓN 3 — CAPITAL INMOVILIZADO  (jerarquía + SKUs con llegadas encima)
 # ══════════════════════════════════════════════════════════════════════════════
 elif seccion == SECCIONES[2]:
     cap_full      = data.get("capital_full")
@@ -1412,175 +1411,83 @@ elif seccion == SECCIONES[2]:
                     + thead + "<tbody>" + tbody + "</tbody></table></div>"
                 )
                 st.markdown(html_tbl, unsafe_allow_html=True)
+
+        # ── Subsección: SKUs en sobrestock con llegadas encima ────────────────
+        sob_det = data.get("sobrestock")
+        if sob_det is not None and len(sob_det):
+            st.divider()
+            st.markdown("### 🚨 SKUs en Sobrestock con Llegadas Encima")
+            st.caption("Productos con más de 6 meses de cobertura que tienen embarques en camino — requieren revisión.")
+
+            sd_cols  = sob_det.columns.tolist()
+            marca_sc = sd_cols[0]
+            cat_sc   = next((c for c in sd_cols if "Cat" in c and "Com" in c), sd_cols[1] if len(sd_cols) > 1 else None)
+            cob_sc   = next((c for c in sd_cols if "Cobert" in c), None)
+            stock_sc = next((c for c in sd_cols if "Stock" in c and "CST" in c), None)
+            eta_sc   = next((c for c in sd_cols if "ETA" in c), None)
+            lleg_sc  = next((c for c in sd_cols if "Llegadas" in c and "Unid" in c), None)
+
+            f1, f2, f3 = st.columns([2, 2, 2])
+            with f1:
+                sel_ms = st.multiselect("Filtrar marcas:", sorted(sob_det[marca_sc].dropna().unique()), placeholder="Todas", key="sob_lleg_m")
+            with f2:
+                cats = sorted(sob_det[cat_sc].dropna().unique()) if cat_sc else []
+                sel_cs = st.multiselect("Cat. Comercial:", cats, placeholder="Todas", key="sob_lleg_c")
+            with f3:
+                sort_sob = st.selectbox("Ordenar por:", ["Stock CST ↓", "Cobertura ↓", "ETA Próx."], key="sob_lleg_sort")
+
+            df_sob = sob_det.copy()
+            if sel_ms:            df_sob = df_sob[df_sob[marca_sc].isin(sel_ms)]
+            if sel_cs and cat_sc: df_sob = df_sob[df_sob[cat_sc].isin(sel_cs)]
+            if sort_sob == "Stock CST ↓" and stock_sc:  df_sob = df_sob.sort_values(stock_sc, ascending=False)
+            elif sort_sob == "Cobertura ↓" and cob_sc:  df_sob = df_sob.sort_values(cob_sc, ascending=False)
+            elif sort_sob == "ETA Próx." and eta_sc:     df_sob = df_sob.sort_values(eta_sc)
+
+            st.caption(f"**{len(df_sob)} SKUs**" + (f" — filtrado de {len(sob_det)}" if len(df_sob) != len(sob_det) else ""))
+
+            # Agrupar por marca en expanders
+            if stock_sc:
+                orden_marcas = df_sob.groupby(marca_sc)[stock_sc].sum().sort_values(ascending=False).index.tolist()
+            else:
+                orden_marcas = sorted(df_sob[marca_sc].dropna().unique().tolist())
+
+            for marca in orden_marcas:
+                df_m    = df_sob[df_sob[marca_sc] == marca]
+                n_m     = len(df_m)
+                stock_v = fmt_mm(df_m[stock_sc].sum()) if stock_sc else "—"
+                cob_avg = f"{df_m[cob_sc].mean():.1f}m prom" if cob_sc and n_m else "—"
+                lleg_tot = f"{int(df_m[lleg_sc].sum())} un." if lleg_sc else ""
+                n_cats  = df_m[cat_sc].nunique() if cat_sc else 0
+                cat_lbl = f"   ·   {n_cats} cats" if n_cats > 1 else ""
+                lleg_lbl = f"   ·   🚢 {lleg_tot}" if lleg_tot else ""
+
+                with st.expander(
+                    f"**{marca}**   ·   {n_m} SKUs{cat_lbl}   ·   Stock CST: {stock_v}   ·   Cob: {cob_avg}{lleg_lbl}",
+                    expanded=False
+                ):
+                    df_show = df_m.copy()
+                    if cat_sc:
+                        sort_cols = [cat_sc]
+                        if sort_sob == "Stock CST ↓" and stock_sc:
+                            sort_cols += [stock_sc]; df_show = df_show.sort_values(sort_cols, ascending=[True, False])
+                        elif sort_sob == "Cobertura ↓" and cob_sc:
+                            sort_cols += [cob_sc];   df_show = df_show.sort_values(sort_cols, ascending=[True, False])
+                        elif sort_sob == "ETA Próx." and eta_sc:
+                            sort_cols += [eta_sc];   df_show = df_show.sort_values(sort_cols, ascending=True)
+                        else:
+                            sku_c = next((c for c in df_show.columns if "SKU" in str(c).upper()), None)
+                            if sku_c: sort_cols += [sku_c]
+                            df_show = df_show.sort_values(sort_cols, ascending=True)
+                    _dfsm = df_show.reset_index(drop=True)
+                    st.dataframe(auto_col_config(_dfsm), hide_index=True, use_container_width=True,
+                                 height=min(35 * n_m + 38, 600))
     else:
         st.info("No se encontraron datos de capital inmovilizado.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 4 — SOBRESTOCK  (resumen por marca + detalle desplegable)
+# SECCIÓN 4 — TRÁNSITOS
 # ══════════════════════════════════════════════════════════════════════════════
 elif seccion == SECCIONES[3]:
-    # Fuente de datos: Capital Inmovilizado tiene todos los SKUs en sobrestock
-    cap_full_s   = data.get("capital_full")
-    cap_total_s  = data.get("capital_total")
-    sob_det      = data.get("sobrestock")     # SKU detail (c-Llegada, solo los que tienen llegada)
-
-    # ── KPIs totales (desde Capital Inmovilizado que cubre todos los SKUs sobrestock) ──
-    if cap_total_s is not None:
-        def _sv(row, kw):
-            for k in row.index:
-                if any(w in str(k) for w in kw):
-                    try: return float(row[k])
-                    except: pass
-            return 0.0
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Stock Total CST",      fmt_mm(_sv(cap_total_s, ["Stock CST"])))
-        s2.metric("Stock Óptimo (4m)",    fmt_mm(_sv(cap_total_s, ["Óptimo","Optimo"])))
-        s3.metric("Capital Inmovilizado", fmt_mm(_sv(cap_total_s, ["Inmovil","Capital"])))
-        s4.metric("SKUs en Sobrestock",   str(int(_sv(cap_total_s, ["SKUs"]))) if _sv(cap_total_s, ["SKUs"]) else "—")
-        st.divider()
-
-    # ── Tabla resumen por Marca (desde jerarquía Capital Inmovilizado) ─────────
-    if cap_full_s is not None and len(cap_full_s):
-        cap_cols_s = cap_full_s.columns.tolist()
-        stock_cs   = next((c for c in cap_cols_s if "Stock CST" in c), None)
-        venta_cs   = next((c for c in cap_cols_s if "Venta" in c and "CST" in c), None)
-        optimo_cs  = next((c for c in cap_cols_s if "Óptimo" in c or "Optimo" in c), None)
-        capital_cs = next((c for c in cap_cols_s if "Inmovil" in c or ("Capital" in c and "Llegadas" not in c)), None)
-        skus_cs    = next((c for c in cap_cols_s if c.strip() == "SKUs"), None)
-        lleg_cs    = next((c for c in cap_cols_s if "Llegadas" in c), None)
-
-        marca_rows_s = cap_full_s[cap_full_s["Nivel"] == "Marca"].copy()
-        if stock_cs:
-            marca_rows_s = marca_rows_s.sort_values(stock_cs, ascending=False)
-
-        def _fv(r, c):
-            v = r.get(c, np.nan)
-            try:
-                f = float(v)
-                return f if not np.isnan(f) else 0.0
-            except Exception:
-                return 0.0
-
-        rows_sm = ""
-        for i, (_, r) in enumerate(marca_rows_s.iterrows()):
-            bg       = "white" if i % 2 == 0 else "#F8F9FA"
-            skus_v   = int(_fv(r, skus_cs)) if skus_cs else "—"
-            stock_v  = fmt_mm(_fv(r, stock_cs)) if stock_cs else "—"
-            venta_v  = fmt_mm(_fv(r, venta_cs)) if venta_cs else "—"
-            optimo_v = fmt_mm(_fv(r, optimo_cs)) if optimo_cs else "—"
-            cap_v    = fmt_mm(_fv(r, capital_cs)) if capital_cs else "—"
-            lleg_v   = str(r.get(lleg_cs, "—")) if lleg_cs else "—"
-            nombre   = r.get("Nombre", "—")
-
-            rows_sm += (
-                f"<tr>"
-                f'<td style="background:{bg};padding:6px 10px;font-weight:700;font-size:13px">{nombre}</td>'
-                f'<td style="background:{bg};padding:6px 10px;text-align:center;font-size:13px">{skus_v}</td>'
-                f'<td style="background:#F4ECF7;color:{C_MORADO};padding:6px 10px;text-align:right;font-weight:700;font-size:13px">{stock_v}</td>'
-                f'<td style="background:{bg};padding:6px 10px;text-align:right;font-size:12px">{venta_v}</td>'
-                f'<td style="background:{bg};padding:6px 10px;text-align:right;font-size:12px">{optimo_v}</td>'
-                f'<td style="background:#E8D5F5;color:#4A235A;padding:6px 10px;text-align:right;font-weight:700;font-size:13px">{cap_v}</td>'
-                f'<td style="background:{bg};padding:6px 10px;text-align:center;font-size:11px;color:#666">{lleg_v}</td>'
-                f"</tr>"
-            )
-
-        # Encabezados limpios (sin saltos de línea del Excel)
-        def _clean(c):
-            return str(c).replace("\n", " ")
-        th = f"background:{C_SOB_BG};color:white;padding:8px 10px;white-space:nowrap;font-size:12px"
-        tbl_sm = (
-            '<div style="overflow-x:auto">'
-            '<table style="border-collapse:collapse;width:100%;font-family:Arial">'
-            f'<thead><tr>'
-            f'<th style="{th};text-align:left">Marca</th>'
-            f'<th style="{th};text-align:center">SKUs</th>'
-            f'<th style="{th};text-align:right">{_clean(stock_cs) if stock_cs else "Stock CST"}</th>'
-            f'<th style="{th};text-align:right">{_clean(venta_cs) if venta_cs else "Venta CST"}</th>'
-            f'<th style="{th};text-align:right">{_clean(optimo_cs) if optimo_cs else "Stock Óptimo"}</th>'
-            f'<th style="{th};text-align:right">Capital Inmovil.</th>'
-            f'<th style="{th};text-align:center">Tiene Llegadas</th>'
-            f'</tr></thead><tbody>{rows_sm}</tbody></table></div>'
-        )
-        st.markdown(tbl_sm, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Detalle desplegable por Marca (SKUs con llegadas) ─────────────────────
-    if sob_det is not None and len(sob_det):
-        st.divider()
-        st.markdown("### 🔍 Detalle por Marca — SKUs en Sobrestock con Llegadas")
-
-        sd_cols  = sob_det.columns.tolist()
-        marca_sc = sd_cols[0]
-        cat_sc   = sd_cols[1] if len(sd_cols) > 1 else None
-        cob_sc   = next((c for c in sd_cols if "Cobert" in c), None)
-        stock_sc = next((c for c in sd_cols if "Stock" in c and "CST" in c), None)
-
-        # Filtros
-        f1, f2, f3 = st.columns([2, 2, 2])
-        with f1:
-            sel_ms = st.multiselect("Filtrar marcas:", sorted(sob_det[marca_sc].dropna().unique()), placeholder="Todas", key="sob_m2")
-        with f2:
-            cats = sorted(sob_det[cat_sc].dropna().unique()) if cat_sc else []
-            sel_cs = st.multiselect("Cat. Comercial:", cats, placeholder="Todas", key="sob_c2")
-        with f3:
-            sort_sob = st.selectbox("Ordenar SKUs por:", ["Stock CST ↓","Cobertura ↓","SKU A-Z"], key="sob_sort2")
-
-        df_sob = sob_det.copy()
-        if sel_ms:            df_sob = df_sob[df_sob[marca_sc].isin(sel_ms)]
-        if sel_cs and cat_sc: df_sob = df_sob[df_sob[cat_sc].isin(sel_cs)]
-        if sort_sob == "Stock CST ↓" and stock_sc:  df_sob = df_sob.sort_values(stock_sc, ascending=False)
-        elif sort_sob == "Cobertura ↓" and cob_sc:  df_sob = df_sob.sort_values(cob_sc, ascending=False)
-
-        st.caption(f"**{len(df_sob)} SKUs**" + (f" — filtrado de {len(sob_det)}" if len(df_sob) != len(sob_det) else ""))
-
-        # Orden de marcas por stock desc
-        if stock_sc:
-            orden_marcas = df_sob.groupby(marca_sc)[stock_sc].sum().sort_values(ascending=False).index.tolist()
-        else:
-            orden_marcas = sorted(df_sob[marca_sc].dropna().unique().tolist())
-
-        for marca in orden_marcas:
-            df_m    = df_sob[df_sob[marca_sc] == marca]
-            n_m     = len(df_m)
-            stock_v = fmt_mm(df_m[stock_sc].sum()) if stock_sc else "—"
-            cob_avg = f"{df_m[cob_sc].mean():.1f}m prom" if cob_sc and n_m else "—"
-
-            # Resumen de categorías para el label del expander
-            n_cats  = df_m[cat_sc].nunique() if cat_sc else 0
-            cat_lbl = f"   ·   {n_cats} cats" if n_cats > 1 else ""
-
-            with st.expander(
-                f"**{marca}**   ·   {n_m} SKUs{cat_lbl}   ·   Stock CST: {stock_v}   ·   {cob_avg}",
-                expanded=False
-            ):
-                # Ordenar dentro de la marca: por categoría primero, luego por el criterio elegido
-                df_show = df_m.copy()
-                if cat_sc:
-                    sort_cols = [cat_sc]
-                    if sort_sob == "Stock CST ↓" and stock_sc:
-                        sort_cols += [stock_sc]
-                        df_show = df_show.sort_values(sort_cols, ascending=[True, False])
-                    elif sort_sob == "Cobertura ↓" and cob_sc:
-                        sort_cols += [cob_sc]
-                        df_show = df_show.sort_values(sort_cols, ascending=[True, False])
-                    else:
-                        # SKU A-Z dentro de cada cat
-                        sku_c = next((c for c in df_show.columns if c.upper() == "SKU" or "SKU" in c), None)
-                        if sku_c:
-                            sort_cols += [sku_c]
-                        df_show = df_show.sort_values(sort_cols, ascending=True)
-
-                _dfsm = df_show.reset_index(drop=True)
-                st.dataframe(auto_col_config(_dfsm), hide_index=True, use_container_width=True,
-                             height=min(35 * n_m + 38, 600))
-    else:
-        if sob_m is None:
-            st.info("No se encontraron datos de sobrestock.")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 5 — TRÁNSITOS
-# ══════════════════════════════════════════════════════════════════════════════
-elif seccion == SECCIONES[4]:
     sub1, sub2 = st.tabs(["📦 Por Embarque", "🆕 Nuevos SKUs"])
 
     with sub1:
