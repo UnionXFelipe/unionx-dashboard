@@ -867,10 +867,23 @@ cap_inmovil    = _find_val(cap_tot, ["Inmovil", "Capital"])
 stock_sob_tot  = _find_val(cap_tot, ["Stock CST"])
 cap_skus       = int(_find_val(cap_tot, ["SKUs"]))
 
-# Ventas mayo
-pct_mayo   = float(emp_row["PctLineal"])   if emp_row is not None else 0.0
-venta_mayo = float(emp_row["VentaAcum"])   if emp_row is not None else 0.0
-meta_mayo  = float(emp_row["Meta"])        if emp_row is not None else 0.0
+# Ventas neta total empresa — leer desde metas (venta neta), no del analisis (costo)
+_metas_kpi = load_metas(_drive_bytes(_METAS_FILE_ID) if _METAS_FILE_ID else None)
+_vn_tot    = _metas_kpi["vn_marca_tot"] if _metas_kpi else None
+if _vn_tot is not None:
+    try:
+        pct_mayo   = float(_vn_tot["PctLineal"])
+        venta_mayo = float(_vn_tot["Real"])
+        meta_mayo  = float(_vn_tot["Meta"])
+    except Exception:
+        pct_mayo = venta_mayo = meta_mayo = 0.0
+elif emp_row is not None:
+    # fallback al dato del analisis si no hay metas
+    pct_mayo   = float(emp_row["PctLineal"])
+    venta_mayo = float(emp_row["VentaAcum"])
+    meta_mayo  = float(emp_row["Meta"])
+else:
+    pct_mayo = venta_mayo = meta_mayo = 0.0
 
 # Tránsitos
 n_emb = len(trans_df) if trans_df is not None else 0
