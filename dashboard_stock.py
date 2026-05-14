@@ -56,7 +56,7 @@ def _drive_bytes(file_id: str) -> bytes:
 st.markdown("""
 <style>
     .block-container { padding-top: 1.2rem; padding-bottom: 0; }
-    [data-testid="stSidebar"] > div:first-child { padding-top: 0.6rem; }
+    [data-testid="stSidebar"] > div:first-child { padding-top: 0.1rem; }
     h1 { font-size: 1.5rem !important; margin-bottom: 0 !important; }
     h3 { font-size: 1rem !important; font-weight: 600; margin-bottom: 4px; }
     [data-testid="metric-container"] {
