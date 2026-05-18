@@ -1,6 +1,6 @@
 # CLAUDE.md — Felipe Caballero
 ## Quién soy
-Felipe Caballero — Planificación en UnionX. Email: felipe@unionx.cl
+Felipe Caballero — Product Manager en UnionX. Email: felipe@unionx.cl
 
 ---
 
