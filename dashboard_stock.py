@@ -119,6 +119,8 @@ C_TOTAL1   = "#2C3E50"
 C_TOTAL2   = "#0B2341"
 C_CRIT_BG  = "#921717"
 C_SOB_BG   = "#4A235A"
+C_ROW_EVEN = "#DAE4EF"   # fila par — gris azulado medio
+C_ROW_ODD  = "#C8D8E8"   # fila impar — ligeramente más oscuro
 
 
 def pct_color(v):
@@ -975,7 +977,7 @@ def _render_cv_table(df_data, tot_row, dim_col="Marca",
     has_pm = show_pct_meta and "PctMeta" in df_data.columns
 
     def _row(r, is_total=False, bg_override=None):
-        bg  = bg_override or ("white" if not is_total else C_TOTAL1)
+        bg  = bg_override or (C_ROW_EVEN if not is_total else C_TOTAL1)
         fg  = "white" if is_total else "#222"
         fw  = "800" if is_total else "700"
         pad = "7px 10px" if is_total else "6px 10px"
@@ -995,10 +997,13 @@ def _render_cv_table(df_data, tot_row, dim_col="Marca",
         pc  = r.get("PctLineal", np.nan)
         try:    pc_f = float(pc)
         except: pc_f = np.nan
-        pcbg, pcfg = pct_color(pc_f) if not np.isnan(pc_f) else ("#f0f0f0", "#888")
+        if is_total:
+            pcbg, pcfg = bg, fg
+        else:
+            pcbg, pcfg = pct_color(pc_f) if not np.isnan(pc_f) else ("#f0f0f0", "#888")
         pc_s = fmt_pct(pc_f) if not np.isnan(pc_f) else "—"
 
-        vs_color = vs_fg if is_total else vs_fg
+        vs_color = fg if is_total else vs_fg
 
         cells = (
             f'<td style="background:{bg};color:{fg};padding:{pad};font-weight:{fw};white-space:nowrap;font-size:13px">{name}</td>'
@@ -1017,7 +1022,7 @@ def _render_cv_table(df_data, tot_row, dim_col="Marca",
 
     rows_html = ""
     for i, (_, r) in enumerate(df_s.iterrows()):
-        bg = "white" if i % 2 == 0 else "#F8F9FA"
+        bg = C_ROW_EVEN if i % 2 == 0 else C_ROW_ODD
         rows_html += _row(r, bg_override=bg)
 
     if tot_row is not None:
@@ -1148,7 +1153,7 @@ elif seccion == SECCIONES[1]:
         # ── Tabla resumen por marca ───────────────────────────────────────────
         rows_h = ""
         for i, (_, r) in enumerate(crit_s.iterrows()):
-            bg     = "white" if i % 2 == 0 else "#F8F9FA"
+            bg     = C_ROW_EVEN if i % 2 == 0 else C_ROW_ODD
             cob    = r.get("CobProm", np.nan)
             cob_bg = cob_color(cob)
             ss     = int(r.get("SinStock", 0) or 0)
@@ -1306,9 +1311,9 @@ elif seccion == SECCIONES[2]:
             NIVEL_STYLE = {
                 "CatPadre": {"bg": "#E8D5F5", "fg": "#4A235A", "pl": "14px",  "fw": "700", "fs": "12px"},
                 "CatHijo":  {"bg": "#F4ECF7", "fg": "#6C3483", "pl": "28px",  "fw": "600", "fs": "12px"},
-                "SKU":      {"bg": "#FFFFFF", "fg": "#222222", "pl": "44px",  "fw": "400", "fs": "11px"},
+                "SKU":      {"bg": C_ROW_EVEN, "fg": "#222222", "pl": "44px",  "fw": "400", "fs": "11px"},
             }
-            ALT_SKU = "#FAFAFA"
+            ALT_SKU = C_ROW_ODD
 
             df = cap_full.reset_index(drop=True)
             all_m_pos = df[df["Nivel"] == "Marca"].index.tolist()
@@ -1355,7 +1360,7 @@ elif seccion == SECCIONES[2]:
                         s  = NIVEL_STYLE[nivel]
                         bg = s["bg"]
                         if nivel == "SKU":
-                            bg = ALT_SKU if sku_alt else "#FFFFFF"
+                            bg = ALT_SKU if sku_alt else C_ROW_EVEN
                             sku_alt = not sku_alt
                         else:
                             sku_alt = False

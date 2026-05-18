@@ -532,19 +532,33 @@ note_row(cm, 2,
     TC)
 cm.row_dimensions[2].height = 16
 
+# ── Redistribuir meta UnionX B2B a las 4 marcas propias ──────────────────────
+# Lhotse 49.7% / LEVO 29.4% / Simplit 17.3% / XROAD 3.6%
+UXB_DIST = {'Lhotse': 0.497, 'LEVO': 0.294, 'Simplit': 0.173, 'XROAD': 0.036}
+
+def redistribuir_uxb(meta_dict, dist_pct):
+    md = {k: list(v) for k, v in meta_dict.items()}
+    uxb_vals = md.pop('UnionX B2B', [0.0] * 12)
+    for marca, pct in dist_pct.items():
+        existing = md.get(marca, [0.0] * 12)
+        md[marca] = [existing[i] + uxb_vals[i] * pct for i in range(12)]
+    return md
+
+brand_meta_venta_cm   = redistribuir_uxb(brand_meta_venta, UXB_DIST)
+brand_meta_contrib_cm = redistribuir_uxb(brand_meta_contrib, UXB_DIST)
+BRAND_ORDER_CM = [b for b in BRAND_ORDER if b != 'UnionX B2B']
+
 nr2 = build_comp_section(cm, 3,
     'VENTA NETA POR MARCA', FILLS['blue'],
-    brand_meta_venta, real_venta, FILLS['lbl_blue'], BRAND_ORDER, 'MARCA',
+    brand_meta_venta_cm, real_venta, FILLS['lbl_blue'], BRAND_ORDER_CM, 'MARCA',
     'Meta: PPTO MARCA 2026 + hoja MATTEL.  Real: Ventas Netas - TD VENTAS Net + Contrib (FORECAST FINAL SKU).  '
-    'UnionX B2B: meta incluida en total, real solo informativo (canal separado).',
-    exclude_real=['UnionX B2B'])
+    'UnionX B2B: meta redistribuida a Lhotse 49.7%, LEVO 29.4%, Simplit 17.3%, XROAD 3.6%.')
 
 nr2 = build_comp_section(cm, nr2,
     'CONTRIBUCION FRONTAL POR MARCA', FILLS['green'],
-    brand_meta_contrib, real_contrib, FILLS['lbl_contrib'], BRAND_ORDER, 'MARCA',
+    brand_meta_contrib_cm, real_contrib, FILLS['lbl_contrib'], BRAND_ORDER_CM, 'MARCA',
     'Meta: PPTO MARCA 2026 + hoja MATTEL.  Real: Margen Front - TD VENTAS Net + Contrib (FORECAST FINAL SKU).  '
-    'UnionX B2B: meta incluida en total, real solo informativo (canal separado).',
-    exclude_real=['UnionX B2B'])
+    'UnionX B2B: meta redistribuida a Lhotse 49.7%, LEVO 29.4%, Simplit 17.3%, XROAD 3.6%.')
 
 cm.freeze_panes = 'B5'
 cm.column_dimensions['A'].width = 20
@@ -831,12 +845,10 @@ cv.row_dimensions[2].height = 18
 nr_cv = 3
 nr_cv = build_como_vamos(cv, nr_cv,
     'VENTA NETA POR MARCA', FILLS['blue'],
-    brand_meta_venta, real_venta, FILLS['lbl_blue'], BRAND_ORDER, 'MARCA',
-    exclude_real=['UnionX B2B'])
+    brand_meta_venta_cm, real_venta, FILLS['lbl_blue'], BRAND_ORDER_CM, 'MARCA')
 nr_cv = build_como_vamos(cv, nr_cv,
     'CONTRIBUCIÓN POR MARCA', FILLS['green'],
-    brand_meta_contrib, real_contrib, FILLS['lbl_contrib'], BRAND_ORDER, 'MARCA',
-    exclude_real=['UnionX B2B'])
+    brand_meta_contrib_cm, real_contrib, FILLS['lbl_contrib'], BRAND_ORDER_CM, 'MARCA')
 nr_cv = build_como_vamos(cv, nr_cv,
     'VENTA NETA POR CANAL', FILLS['blue'],
     canal_meta_venta, real_canal_venta, FILLS['lbl_blue'], CANAL_COMP_MAIN, 'CANAL')

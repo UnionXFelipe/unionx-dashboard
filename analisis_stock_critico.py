@@ -28,14 +28,19 @@ OUT_PATH = (r'C:\Users\felip\Desktop\UNIONX\FORECAST FINAL SKU'
             fr'\Analisis Planificacion\analisis_planificacion_{_CUR_MES}26.xlsx')
 
 # ── Columnas tránsito FCST BASE (0-based) — verificadas en fila 3 de FCST BASE SKU MACRO V2 ──
-# V2 max col = HE (213). 0-based indices:
-# CW(100)=Transito ABR 26, DJ(113)=Embarcado Mayo (MAY usa Embarcado, no Transito),
-# DV(125)=Transito JUN 26, EH(137)=Transito JUL 26,
-# ET(149)=Transito AGO 26, FF(161)=Transito SEP 26, FR(173)=Transito OCT 26
+# V2 con columna "Sku Padre" en idx 4 — todos los índices originales +1.
+# idx 4='Sku Padre', idx 5='Sku', idx 10='Ranking Comercial', idx 19='Puerto Origen'
+# idx 101=Transito ABR 26, idx 114=Embarcado Mayo (MAY usa Embarcado, no Transito),
+# idx 126=Transito JUN 26, idx 138=Transito JUL 26,
+# idx 150=Transito AGO 26, idx 162=Transito SEP 26, idx 174=Transito OCT 26
 TRANSITO_FCST = {
-    'ABR26': 100, 'MAY26': 113, 'JUN26': 125,
-    'JUL26': 137, 'AGO26': 149, 'SEP26': 161, 'OCT26': 173,
+    'ABR26': 101, 'MAY26': 114, 'JUN26': 126,
+    'JUL26': 138, 'AGO26': 150, 'SEP26': 162, 'OCT26': 174,
 }
+FCST_IDX_SKU_PADRE = 4   # 'Sku Padre'
+FCST_IDX_SKU       = 5   # 'Sku'
+FCST_IDX_RANKING   = 10  # 'Ranking Comercial'
+FCST_IDX_PUERTO    = 19  # 'Puerto Origen'
 MESES_ORDEN = ['ABR26','MAY26','JUN26','JUL26','AGO26','SEP26','OCT26']
 
 # ── Posiciones en hojas FLAT (0-based) ────────────────────────────────
@@ -1563,6 +1568,291 @@ def write_capital_inmovilizado(owb, sobrestock):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# ANÁLISIS — Sobrestock por Marca → Cat.Padre → Cat.Hijo → SKU Padre → SKU
+# ══════════════════════════════════════════════════════════════════════
+
+def write_sobrestock_sku_padre(owb, sobrestock):
+    """
+    Hoja 'Sobrestock x SKU Padre': jerarquía 4 niveles desplegable.
+      Nivel 0 (siempre visible): Marca          — morado oscuro
+      Nivel 1 (colapsado):       Cat. Padre     — morado medio
+      Nivel 2 (colapsado):       Cat. Hijo      — morado claro
+      Nivel 3 (colapsado):       SKU Padre      — azul marino
+      Nivel 4 (colapsado):       SKU + Desc     — filas alternas
+    Ordenado por capital excedente desc en cada nivel.
+    SKUs sin sku_padre se agrupan bajo '(Sin Padre)'.
+    """
+    if not sobrestock:
+        return
+
+    from openpyxl.worksheet.properties import WorksheetProperties, Outline
+
+    OPTIMO_MESES = 4
+    _m1, _m2, _m3 = _CUR_MONTH, _CUR_MONTH + 1, _CUR_MONTH + 2
+    _m3_abbr = _MES_ABBR_DYN.get(_m3, '')
+
+    # ── Calcular capital excedente por SKU ────────────────────────────
+    rows = []
+    for r in sobrestock:
+        v1 = r['venta_mes'].get(_m1, 0)
+        v2 = r['venta_mes'].get(_m2, 0)
+        v3 = r['venta_mes'].get(_m3, 0)
+        venta_prom = (v1 + v2 + v3) / 3
+        if venta_prom <= 0:
+            continue
+        stock_optimo   = venta_prom * OPTIMO_MESES
+        capital_exceso = max(0, r['stock_cst'] - stock_optimo)
+        meses_exceso   = max(0, r['cobert'] - OPTIMO_MESES)
+        sp = r.get('sku_padre', '') or ''
+        sp = str(sp).strip() if sp else ''
+        if not sp: sp = '(Sin Padre)'
+        rows.append({**r,
+                     'sku_padre_key': sp,
+                     'venta_cst':      venta_prom,
+                     'stock_optimo':   stock_optimo,
+                     'capital_exceso': capital_exceso,
+                     'meses_exceso':   round(meses_exceso, 1)})
+    if not rows:
+        return
+
+    # ── Construir jerarquía marca → cat_padre → cat_hijo → sku_padre → [skus] ──
+    hier = {}
+    for r in rows:
+        m, cp, ch, sp = r['marca'], r['cat_padre'], r['cat_hijo'], r['sku_padre_key']
+        hier.setdefault(m, {}).setdefault(cp, {}).setdefault(ch, {}).setdefault(sp, []).append(r)
+
+    def _sum(lst, k):  return sum(r[k] for r in lst)
+    def _flat_sp(sp_d):  return [r for lst in sp_d.values()  for r in lst]
+    def _flat_ch(ch_d):  return [r for sp_d in ch_d.values() for lst in sp_d.values() for r in lst]
+    def _flat_cp(cp_d):  return [r for ch_d in cp_d.values() for sp_d in ch_d.values()
+                                 for lst in sp_d.values() for r in lst]
+
+    # Ordenar cada nivel por capital_exceso desc
+    for m in hier:
+        for cp in hier[m]:
+            for ch in hier[m][cp]:
+                for sp in hier[m][cp][ch]:
+                    hier[m][cp][ch][sp].sort(key=lambda r: -r['capital_exceso'])
+                hier[m][cp][ch] = dict(sorted(hier[m][cp][ch].items(),
+                    key=lambda kv: -_sum(kv[1], 'capital_exceso')))
+            hier[m][cp] = dict(sorted(hier[m][cp].items(),
+                key=lambda kv: -_sum(_flat_sp(kv[1]), 'capital_exceso')))
+        hier[m] = dict(sorted(hier[m].items(),
+            key=lambda kv: -_sum(_flat_ch(kv[1]), 'capital_exceso')))
+    hier = dict(sorted(hier.items(),
+        key=lambda kv: -_sum(_flat_cp(kv[1]), 'capital_exceso')))
+
+    # ── Hoja ─────────────────────────────────────────────────────────
+    ws = owb.create_sheet('Sobrestock x SKU Padre')
+    ws.sheet_properties = WorksheetProperties(
+        outlinePr=Outline(summaryBelow=False, summaryRight=False)
+    )
+    ws.freeze_panes = 'A3'
+    ws.row_dimensions[1].height = 26
+    ws.row_dimensions[2].height = 36
+
+    COLS = [
+        ('Marca / Cat. Padre / Cat. Hijo / SKU Padre / SKU', 40),
+        ('Descripción',                   32),
+        ('SKUs',                           7),
+        ('Cobert.\nACT (m)',              11),
+        ('Meses\nExceso',                 11),
+        ('Stock CST\n($)',                18),
+        (f'Venta CST\nProm {_CUR_MES}-{_m3_abbr} ($)', 18),
+        ('Stock\nÓptimo ($)',             18),
+        ('Capital\nInmovil. ($)',         18),
+        ('Tiene\nLlegadas',               12),
+    ]
+    NCOLS   = len(COLS)
+    end_col = get_column_letter(NCOLS)
+
+    tot_cap  = sum(r['capital_exceso'] for r in rows)
+    tot_skus = len(rows)
+
+    ws.merge_cells(f'A1:{end_col}1')
+    t = ws.cell(row=1, column=1,
+                value=f'CAPITAL INMOVILIZADO — VISTA POR SKU PADRE  |  '
+                      f'Total exceso sobre {OPTIMO_MESES} meses óptimos: ${tot_cap:,.0f}')
+    t.font      = Font(bold=True, color='FFFFFF', name='Calibri', size=12)
+    t.fill      = PatternFill('solid', fgColor='4A235A')
+    t.alignment = Alignment(horizontal='center', vertical='center')
+
+    for col, (h, w) in enumerate(COLS, 1):
+        hdr(ws, 2, col, h, w)
+
+    # ── Colores (misma paleta que Capital Inmovilizado + nivel SKU Padre en azul) ──
+    MARCA_BG   = '4A235A'   # morado muy oscuro
+    CP_BG      = '7D3C98'   # morado medio
+    CH_BG      = 'D7BDE2'   # morado claro
+    SP_BG      = '1A3A5C'   # azul marino oscuro — SKU Padre
+    SKU_BG1    = 'EAF2FB'   # azul muy claro — fila impar SKU
+    SKU_BG2    = 'FFFFFF'   # blanco — fila par SKU
+
+    def _cob_bg(meses):
+        if meses > 8: return ('E8DAEF', '6C3483')
+        if meses > 4: return ('FADBD8', 'CB4335')
+        return               ('FDEBD0', 'E67E22')
+
+    def _base_desc(sku_rows):
+        """Descripción base del SKU Padre: prefijo común + sufijo común de palabras.
+        Elimina las palabras variables entre variantes (ej. colores).
+        Ejemplo:
+          'Parlante Tune Up Blue Lhotse'  ┐
+          'Parlante Tune Up Red Lhotse'   ├→ 'Parlante Tune Up Lhotse'
+          'Parlante Tune Up Green Lhotse' ┘
+        """
+        descs = [r['desc'] for r in sku_rows if r.get('desc')]
+        if not descs:
+            return ''
+        if len(descs) == 1:
+            return descs[0]
+        word_lists = [d.split() for d in descs]
+        # Prefijo común palabra a palabra
+        prefix = []
+        for words in zip(*word_lists):
+            if len(set(w.lower() for w in words)) == 1:
+                prefix.append(words[0])
+            else:
+                break
+        # Sufijo común palabra a palabra (desde el final)
+        suffix = []
+        for words in zip(*[list(reversed(wl)) for wl in word_lists]):
+            if len(set(w.lower() for w in words)) == 1:
+                suffix.append(words[0])
+            else:
+                break
+        suffix.reverse()
+        # Evitar solapamiento entre prefijo y sufijo
+        p_len = len(prefix)
+        s_len = len(suffix)
+        min_len = min(len(wl) for wl in word_lists)
+        if p_len + s_len >= min_len:
+            s_len = max(0, min_len - p_len)
+            suffix = suffix[-s_len:] if s_len else []
+        return ' '.join(prefix + suffix).strip()
+
+    def _write_agg(rn, label, lst, outline_lvl, bg, fg_main, fg_num, fg_dim,
+                   hidden=False, height=17, desc=''):
+        """Fila de agrupación genérica (Marca/CP/CH/SP)."""
+        n    = len(lst)
+        stk  = _sum(lst, 'stock_cst')
+        vta  = _sum(lst, 'venta_cst')
+        opt  = _sum(lst, 'stock_optimo')
+        cap  = _sum(lst, 'capital_exceso')
+        lleg = sum(1 for r in lst if r['has_emb'])
+        ltxt = f'{lleg}/{n} c/llegada' if lleg else 'Sin llegadas'
+        cel(ws, rn, 1, label,  bold=True, bg=bg, fg=fg_main)
+        cel(ws, rn, 2, desc,   bg=bg, fg='AED6F1' if desc else fg_main, size=9)
+        cel(ws, rn, 3, n,      align='center', bg=bg, fg=fg_main, bold=True)
+        cel(ws, rn, 4, '',                bg=bg)
+        cel(ws, rn, 5, '',                bg=bg)
+        cel(ws, rn, 6, stk,  align='right', fmt='$ #,##0', bg=bg, fg=fg_main, bold=True)
+        cel(ws, rn, 7, vta,  align='right', fmt='$ #,##0', bg=bg, fg=fg_dim)
+        cel(ws, rn, 8, opt,  align='right', fmt='$ #,##0', bg=bg, fg=fg_dim)
+        cel(ws, rn, 9, cap,  align='right', fmt='$ #,##0', bg=bg, fg=fg_main, bold=True)
+        cel(ws, rn, 10, ltxt, align='center', bg=bg, fg=fg_num)
+        ws.row_dimensions[rn].outline_level = outline_lvl
+        ws.row_dimensions[rn].hidden        = hidden
+        ws.row_dimensions[rn].height        = height
+
+    def _row_sku(rn, r, i, outline_lvl):
+        bg = SKU_BG1 if i % 2 == 0 else SKU_BG2
+        cb, cf = _cob_bg(r['meses_exceso'])
+        cel(ws, rn, 1, f'               ↳  {r["sku"]}',
+            bg=bg, fg='1A5276', size=8)
+        cel(ws, rn, 2, r['desc'],           bg=bg, size=8)
+        cel(ws, rn, 3, '',                  bg=bg)
+        cel(ws, rn, 4, r['cobert'],         align='center', fmt='0.00',
+            bg=cb, fg=cf, size=8, bold=True)
+        cel(ws, rn, 5, r['meses_exceso'],   align='center', fmt='0.0',
+            bg=cb, fg=cf, size=8)
+        cel(ws, rn, 6, r['stock_cst'],      align='right', fmt='$ #,##0', bg=bg, size=8)
+        cel(ws, rn, 7, r['venta_cst'],      align='right', fmt='$ #,##0', bg=bg, size=8)
+        cel(ws, rn, 8, r['stock_optimo'],   align='right', fmt='$ #,##0',
+            bg=bg, fg='566573', size=8)
+        cel(ws, rn, 9, r['capital_exceso'], align='right', fmt='$ #,##0',
+            bg=cb, fg=cf, size=8, bold=True)
+        tiene = '⚠ SÍ' if r['has_emb'] else 'No'
+        cel(ws, rn, 10, tiene, align='center', size=8,
+            bg=C_NARAN_BG if r['has_emb'] else bg,
+            fg=C_NARAN    if r['has_emb'] else '566573',
+            bold=r['has_emb'])
+        ws.row_dimensions[rn].outline_level = outline_lvl
+        ws.row_dimensions[rn].hidden        = True
+        ws.row_dimensions[rn].height        = 14
+
+    # ── Render ───────────────────────────────────────────────────────
+    rn = 3
+    for marca, cp_dict in hier.items():
+        m_rows = _flat_cp(cp_dict)
+        _write_agg(rn, f'▶  {marca}', m_rows,
+                   outline_lvl=0, bg=MARCA_BG,
+                   fg_main='FFFFFF', fg_num='D7BDE2', fg_dim='D7BDE2',
+                   hidden=False, height=17)
+        rn += 1
+
+        for cat_padre, ch_dict in cp_dict.items():
+            cp_rows = _flat_sp(ch_dict) if False else _flat_ch(ch_dict)
+            # cp_rows = todos los SKUs dentro de este cat_padre
+            cp_rows = [r for ch in ch_dict.values() for sp_d in ch.values() for r in sp_d]
+            _write_agg(rn, f'   ▸  {cat_padre}', cp_rows,
+                       outline_lvl=1, bg=CP_BG,
+                       fg_main='FFFFFF', fg_num='D7BDE2', fg_dim='D7BDE2',
+                       hidden=True, height=16)
+            rn += 1
+
+            for cat_hijo, sp_dict in ch_dict.items():
+                ch_rows = [r for lst in sp_dict.values() for r in lst]
+                _write_agg(rn, f'         ▹  {cat_hijo}', ch_rows,
+                           outline_lvl=2, bg=CH_BG,
+                           fg_main='4A235A', fg_num='566573', fg_dim='566573',
+                           hidden=True, height=16)
+                rn += 1
+
+                for sku_padre, sku_rows in sp_dict.items():
+                    _write_agg(rn, f'               ◆  {sku_padre}', sku_rows,
+                               outline_lvl=3, bg=SP_BG,
+                               fg_main='FFFFFF', fg_num='AED6F1', fg_dim='AED6F1',
+                               hidden=True, height=15,
+                               desc=_base_desc(sku_rows))
+                    rn += 1
+
+                    for i, r in enumerate(sku_rows):
+                        _row_sku(rn, r, i, outline_lvl=4)
+                        rn += 1
+
+    # ── Total general ────────────────────────────────────────────────
+    ws.row_dimensions[rn].height = 4
+    for c in range(1, NCOLS + 1):
+        ws.cell(row=rn, column=c).fill = PatternFill('solid', fgColor='4A235A')
+    rn += 1
+    ws.row_dimensions[rn].height = 17
+    tot_stk = sum(r['stock_cst']    for r in rows)
+    tot_vta = sum(r['venta_cst']    for r in rows)
+    tot_opt = sum(r['stock_optimo'] for r in rows)
+    for col, (v, f) in enumerate(zip(
+        ['TOTAL', '', tot_skus, '', '', tot_stk, tot_vta, tot_opt, tot_cap, ''],
+        [None,None,'0',None,None,'$ #,##0','$ #,##0','$ #,##0','$ #,##0',None]
+    ), 1):
+        c = ws.cell(row=rn, column=col, value=v)
+        c.font      = Font(name='Calibri', size=10, bold=True, color='FFFFFF')
+        c.fill      = PatternFill('solid', fgColor='4A235A')
+        c.alignment = Alignment(
+            horizontal='right' if isinstance(v, (int, float)) else 'center',
+            vertical='center')
+        c.border    = borde
+        if f: c.number_format = f
+
+    # Nota al pie
+    rn += 2
+    nota = ws.cell(row=rn, column=1,
+                   value=f'Capital excedente = Stock CST − (Venta Prom {_CUR_MES}‑{_m3_abbr} × {OPTIMO_MESES} meses óptimos)  |  '
+                         f'SKUs sin venta en los próximos 3 meses se excluyen del cálculo.')
+    nota.font = Font(name='Calibri', size=8, italic=True, color='7F8C8D')
+    ws.merge_cells(f'A{rn}:{end_col}{rn}')
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ANÁLISIS 4 — Sobrestock con Llegada Encima
 # ══════════════════════════════════════════════════════════════════════
 
@@ -2454,8 +2744,8 @@ def run_analisis(log_fn=print):
     # ── Índices ───────────────────────────────────────────────────────
     fcst_por_sku = {}
     for row in data_fcst:
-        if row is None or row[4] is None: continue
-        fcst_por_sku[_fmt_sku(row[4])] = row
+        if row is None or row[FCST_IDX_SKU] is None: continue
+        fcst_por_sku[_fmt_sku(row[FCST_IDX_SKU])] = row
 
     # ── Mapeo dinámico de columnas BASE TRANSITOS (por nombre de encabezado) ─
     _tc_map = {}
@@ -2547,8 +2837,18 @@ def run_analisis(log_fn=print):
 
         sku_norm = str(int(float(sku))) if sku.replace('.','',1).isdigit() else sku
         fcst_row = fcst_por_sku.get(sku) or fcst_por_sku.get(sku_norm)
-        ranking  = fcst_row[9]  if fcst_row and fcst_row[9]  is not None else ''
-        puerto   = str(fcst_row[18]).strip() if fcst_row and fcst_row[18] is not None else ''
+        ranking   = fcst_row[FCST_IDX_RANKING] if fcst_row and fcst_row[FCST_IDX_RANKING] is not None else ''
+        puerto    = str(fcst_row[FCST_IDX_PUERTO]).strip() if fcst_row and fcst_row[FCST_IDX_PUERTO] is not None else ''
+        _sp_raw   = fcst_row[FCST_IDX_SKU_PADRE] if fcst_row else None
+        if _sp_raw is not None:
+            # Normalizar: si es número entero, quitar decimales (ej. 1566335721736.0 → '1566335721736')
+            try:
+                _sp_f = float(_sp_raw)
+                sku_padre = str(int(_sp_f)) if _sp_f == int(_sp_f) else str(_sp_raw).strip()
+            except (ValueError, TypeError):
+                sku_padre = str(_sp_raw).strip()
+        else:
+            sku_padre = ''
         llegadas = {m: flt(fcst_row[TRANSITO_FCST[m]]) for m in MESES_ORDEN} \
                    if fcst_row else {m: 0 for m in MESES_ORDEN}
 
@@ -2598,7 +2898,7 @@ def run_analisis(log_fn=print):
         all_rows.append({
             'marca': marca, 'cat_com': cat_com,
             'cat_padre': cat_padre, 'cat_hijo': cat_hijo, 'ranking': ranking,
-            'sku': sku, 'desc': desc,
+            'sku': sku, 'sku_padre': sku_padre, 'desc': desc,
             'cobert': round(cobert, 3),
             'stock_cst':  flt(rc[CST_STOCK]),  'venta_cst':  flt(rc[CST_VENTA]),
             'stock_unid': flt(ru[UNID_STOCK]), 'venta_unid': flt(ru[UNID_VENTA]),
@@ -2690,16 +2990,19 @@ def run_analisis(log_fn=print):
     )
     # 5. Capital Inmovilizado
     write_capital_inmovilizado(owb, sobrestock)
-    # 6. Sobrestock c-Llegada
+    # 6. Sobrestock x SKU Padre
+    write_sobrestock_sku_padre(owb, sobrestock)
+    # 7. Sobrestock c-Llegada
     write_sobrestock_con_llegada(owb, sobrestock)
-    # 7. Tránsitos por Embarque
+    # 8. Tránsitos por Embarque
     write_transitos_embarque(owb, trans_rows_full, cob_map_full)
-    # 8. Nuevos en Tránsito
+    # 9. Nuevos en Tránsito
     write_nuevos_transito(owb, trans_rows_full)
     _año_hoy = _dt.date.today().year
     log_fn(f"   Hojas generadas: VTA x Marca MAY {_año_hoy} | CST x Marca | "
            f"Critico x Marca | Detalle Critico | Capital Inmovilizado | "
-           f"Sobrestock c-Llegada | Tránsitos por Embarque | Nuevos en Tránsito")
+           f"Sobrestock x SKU Padre | Sobrestock c-Llegada | "
+           f"Tránsitos por Embarque | Nuevos en Tránsito")
 
     owb.save(OUT_PATH)
     log_fn(f"   Guardado: {OUT_PATH}")
